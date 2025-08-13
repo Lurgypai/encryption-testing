@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/workspace/out",
+  "command": "/usr/bin/g++-14   -std=gnu++23 -o CMakeFiles/test.dir/test.cpp.o -c /workspace/test.cpp",
+  "file": "/workspace/test.cpp",
+  "output": "CMakeFiles/test.dir/test.cpp.o"
+}
+]
