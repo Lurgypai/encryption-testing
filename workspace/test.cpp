@@ -30,10 +30,10 @@ public:
     void reset() {
         start = std::chrono::high_resolution_clock::now();
     }
-    std::string getElapsed() {
+    double getElapsed() {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::high_resolution_clock::now() - start);
-        return std::to_string(elapsed.count()) + "ms";
+        return elapsed.count();
     }
 private:
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
@@ -46,9 +46,9 @@ static void check_gcry(gcry_error_t err) {
         throw std::runtime_error{gcry_strerror(err)};
     }
 }
-static void setupBlowfish(gcry_cipher_hd_t* handle, int* keysize, int* blklen, std::string* iv) {
-    int cypher = GCRY_CIPHER_BLOWFISH;
-    int mode = GCRY_CIPHER_MODE_ECB;
+static void setupTwofish(gcry_cipher_hd_t* handle, int* keysize, int* blklen, std::string* iv) {
+    int cypher = GCRY_CIPHER_TWOFISH;
+    int mode = GCRY_CIPHER_MODE_CBC;
 
     check_gcry(gcry_cipher_open(handle, cypher, mode, 0));
 
@@ -101,11 +101,14 @@ int main(int argc, char** argv) {
     std::string algo{argv[1]};
     size_t intCount = std::stoi(argv[2]);
 
-    std::string plainText = generateBuffer(intCount);
-    std::vector<unsigned char> cipherText;
-    cipherText.resize(plainText.size());
+    // only hold CHUNK_SIZE in memory at a time
+    size_t remaining = intCount * sizeof(std::uint64_t); // bytes left
+    std::string plainText;
+    plainText.resize(CHUNK_SIZE);
+    std::string cipherText;
+    cipherText.resize(CHUNK_SIZE);
     std::string decryptText;
-    decryptText.resize(plainText.size());
+    decryptText.resize(CHUNK_SIZE);
 
     gcry_check_version(NULL);
     gcry_control( GCRYCTL_DISABLE_SECMEM_WARN );
@@ -124,13 +127,13 @@ int main(int argc, char** argv) {
     else if (algo == "aes256") {
         setupAes256(&handle, &keysize, &blklen, &iv);
     }
-    else if (algo == "blowfish") {
-        setupBlowfish(&handle, &keysize, &blklen, &iv);
+    else if (algo == "twofish") {
+        setupTwofish(&handle, &keysize, &blklen, &iv);
     }
 
-    if(plainText.size() % blklen != 0) {
-        std::print("Somehow the plaintext size ({}) is not a multiple of the block length ({})\n",
-                plainText.size(),
+    if(remaining % blklen != 0) {
+        std::println("Overall size ({}) is not a multiple of the block length ({})",
+                remaining,
                 blklen);
         return 1;
     }
@@ -144,36 +147,47 @@ int main(int argc, char** argv) {
     for(auto& c : key) c = dist(re);
     check_gcry(gcry_cipher_setkey(handle, key.data(), key.size()));
 
+    std::fstream cipherFile{"cipherfile", std::ios::in | std::ios::out | std::ios::binary};
+    std::fstream plainFile{"plainFile.txt", std::ios::in | std::ios::out | std::ios::binary};
 
     //encrypt
-    int round = 0;
     Timer t{};
-    t.reset();
-    for(round = 0; round != plainText.size() / CHUNK_SIZE; ++round) {
-        check_gcry(gcry_cipher_encrypt(handle, cipherText.data() + round * CHUNK_SIZE, CHUNK_SIZE,
-                    plainText.data() + round * CHUNK_SIZE, CHUNK_SIZE));
-    }
-    std::print("Encryption time: {}\n", t.getElapsed());
+    double elapsed;
+    for(; remaining > CHUNK_SIZE; remaining -= CHUNK_SIZE) {
+        std::string plainText = generateBuffer(CHUNK_SIZE / sizeof(std::uint64_t));
+        plainFile << plainText;
 
+        t.reset();
+        check_gcry(gcry_cipher_encrypt(handle, cipherText.data(), CHUNK_SIZE,
+                    plainText.data(), CHUNK_SIZE));
+        elapsed += t.getElapsed();
+
+        cipherFile << cipherText;
+    }
+    std::println("Encryption time: {}ms", elapsed);
+
+    remaining = intCount * sizeof(std::uint64_t);
+    plainFile.seekg(0);
+    cipherFile.seekg(0);
 
     //decrypt
     check_gcry(gcry_cipher_reset(handle));
     check_gcry(gcry_cipher_setiv(handle, iv.data(), iv.size()));
-    t.reset();
-    for(round = 0; round != cipherText.size() / CHUNK_SIZE; ++round) {
-        check_gcry(gcry_cipher_decrypt(handle, decryptText.data() + round * CHUNK_SIZE, CHUNK_SIZE,
-                    cipherText.data() + round * CHUNK_SIZE, CHUNK_SIZE));
-    }
-    std::print("Decryption time: {}\n", t.getElapsed());
+    for(; remaining > CHUNK_SIZE; remaining -= CHUNK_SIZE) {
+        cipherFile.read(cipherText.data(), CHUNK_SIZE);
 
+        t.reset();
+        check_gcry(gcry_cipher_decrypt(handle, decryptText.data(), CHUNK_SIZE,
+                    cipherText.data(), CHUNK_SIZE));
+        elapsed += t.getElapsed();
 
-    //checking
-    for(int i = 0; i != plainText.size(); ++i) {
-        if(plainText[i] != decryptText[i]) {
-            std::print("Character at index {} is not equal, {} != {}\n", i, plainText[i], decryptText[i]);
+        plainFile.read(plainText.data(), CHUNK_SIZE);
+        if(plainText != decryptText) {
+            std::println("error, chunks don't match");
             return 1;
         }
     }
+    std::println("Decryption time: {}ms", t.getElapsed());
 
     return 0;
 }
