@@ -2,8 +2,7 @@ import itertools
 import os
 
 modes = ["aes256", "camellia", "chacha20", "twofish"]
-# dims0 = [134217728, 134217728 * 2, 134217728 * 4, 134217728 * 8, 134217728 * 16] # 1, 2, 4, 8, 16 GiB
-dims0 = [int(16384 / 8)]
+dims0 = [134217728, 134217728 * 2, 134217728 * 4, 134217728 * 8, 134217728 * 16] # 1, 2, 4, 8, 16 GiB
 
 output_dir = "configs"
 

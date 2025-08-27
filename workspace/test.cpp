@@ -31,7 +31,7 @@ public:
         start = std::chrono::high_resolution_clock::now();
     }
     double getElapsed() {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::high_resolution_clock::now() - start);
         return elapsed.count();
     }
@@ -54,6 +54,9 @@ static void setupTwofish(gcry_cipher_hd_t* handle, int* keysize, int* blklen, st
 
     *keysize  = gcry_cipher_get_algo_keylen(cypher);
     *blklen = gcry_cipher_get_algo_blklen(cypher);
+
+    iv->resize(*blklen);
+    check_gcry(gcry_cipher_setiv(*handle, iv->data(), iv->size()));
 }
 
 static void setupAes256(gcry_cipher_hd_t* handle, int* keysize, int* blklen, std::string* iv) {
@@ -82,7 +85,7 @@ static void setupChacha20(gcry_cipher_hd_t* handle, int* keysize, int* blklen, s
     check_gcry(gcry_cipher_setiv(*handle, iv->data(), iv->size()));
 }
 
-static void setupCamellia256(gcry_cipher_hd_t* handle, int* keysize, int* blklen) {
+static void setupCamellia256(gcry_cipher_hd_t* handle, int* keysize, int* blklen, std::string* iv) {
     int cypher = GCRY_CIPHER_CAMELLIA256;
     int mode = GCRY_CIPHER_MODE_CBC;
 
@@ -90,6 +93,9 @@ static void setupCamellia256(gcry_cipher_hd_t* handle, int* keysize, int* blklen
 
     *keysize  = gcry_cipher_get_algo_keylen(cypher);
     *blklen = gcry_cipher_get_algo_blklen(cypher);
+
+    iv->resize(*blklen);
+    check_gcry(gcry_cipher_setiv(*handle, iv->data(), iv->size()));
 }
 
 int main(int argc, char** argv) {
@@ -99,7 +105,7 @@ int main(int argc, char** argv) {
     }
 
     std::string algo{argv[1]};
-    size_t intCount = std::stoi(argv[2]);
+    size_t intCount = std::stoull(argv[2]);
 
     // only hold CHUNK_SIZE in memory at a time
     size_t remaining = intCount * sizeof(std::uint64_t); // bytes left
@@ -119,7 +125,7 @@ int main(int argc, char** argv) {
     std::string iv;
 
     if(algo == "camellia") {
-        setupCamellia256(&handle, &keysize, &blklen);
+        setupCamellia256(&handle, &keysize, &blklen, &iv);
     }
     else if (algo == "chacha20") {
         setupChacha20(&handle, &keysize, &blklen, &iv);
@@ -147,33 +153,42 @@ int main(int argc, char** argv) {
     for(auto& c : key) c = dist(re);
     check_gcry(gcry_cipher_setkey(handle, key.data(), key.size()));
 
-    std::fstream cipherFile{"cipherfile", std::ios::in | std::ios::out | std::ios::binary};
-    std::fstream plainFile{"plainFile.txt", std::ios::in | std::ios::out | std::ios::binary};
+    std::fstream cipherFile{"cipherfile", std::ios::in | std::ios::out | std::ios::trunc | std::ios::binary};
+    std::fstream plainFile{"plainfile.txt", std::ios::in | std::ios::out | std::ios::trunc | std::ios::binary};
+
+    if(!cipherFile.good() || !plainFile.good()) {
+        std::println("Error, one or more files aren't good.");
+        return 1;
+    }
 
     //encrypt
     Timer t{};
     double elapsed;
-    for(; remaining > CHUNK_SIZE; remaining -= CHUNK_SIZE) {
-        std::string plainText = generateBuffer(CHUNK_SIZE / sizeof(std::uint64_t));
-        plainFile << plainText;
+    for(; remaining >= CHUNK_SIZE; remaining -= CHUNK_SIZE) {
+        plainText = generateBuffer(CHUNK_SIZE / sizeof(std::uint64_t));
+        plainFile.write(plainText.data(), CHUNK_SIZE);
 
         t.reset();
         check_gcry(gcry_cipher_encrypt(handle, cipherText.data(), CHUNK_SIZE,
                     plainText.data(), CHUNK_SIZE));
         elapsed += t.getElapsed();
 
-        cipherFile << cipherText;
+        cipherFile.write(cipherText.data(), CHUNK_SIZE);
     }
-    std::println("Encryption time: {}ms", elapsed);
+    std::println("Encryption time: {}s", elapsed / 1000000000);
 
+    elapsed = 0;
     remaining = intCount * sizeof(std::uint64_t);
     plainFile.seekg(0);
     cipherFile.seekg(0);
 
     //decrypt
     check_gcry(gcry_cipher_reset(handle));
-    check_gcry(gcry_cipher_setiv(handle, iv.data(), iv.size()));
-    for(; remaining > CHUNK_SIZE; remaining -= CHUNK_SIZE) {
+    if(!iv.empty()) check_gcry(gcry_cipher_setiv(handle, iv.data(), iv.size()));
+
+    int count = 0;
+    for(; remaining >= CHUNK_SIZE; remaining -= CHUNK_SIZE) {
+        ++count;
         cipherFile.read(cipherText.data(), CHUNK_SIZE);
 
         t.reset();
@@ -183,11 +198,11 @@ int main(int argc, char** argv) {
 
         plainFile.read(plainText.data(), CHUNK_SIZE);
         if(plainText != decryptText) {
-            std::println("error, chunks don't match");
+            std::println("error, chunk {} doesn't match", count);
             return 1;
         }
     }
-    std::println("Decryption time: {}ms", t.getElapsed());
+    std::println("Decryption time: {}s", elapsed / 1000000000);
 
     return 0;
 }
