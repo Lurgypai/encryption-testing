@@ -8,7 +8,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 project(encryption-testing)
 
 find_package(GCrypt REQUIRED)
+find_package(Nettle REQUIRED)
 
-add_executable(test "test.cpp")
+add_executable(encryption-benchmark "main.cpp" "./EncryptionLibrary.cpp" "./ELgcrypt.cpp")
 
-target_link_libraries(test gcrypt)
+target_link_libraries(encryption-benchmark gcrypt)
+target_link_libraries(encryption-benchmark nettle)

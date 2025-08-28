@@ -8,8 +8,8 @@ RUN apt install -y \
     bzip2 \
     gcc-14 \
     g++-14 \
-    libgcrypt-dev
-
+    libgcrypt-dev \
+    nettle-dev
 
 # Make a fake sudo
 RUN echo '#!/bin/sh' > /usr/local/bin/sudo && \
@@ -19,9 +19,14 @@ RUN echo '#!/bin/sh' > /usr/local/bin/sudo && \
 
 WORKDIR /root/
 
+#install vim
 RUN git clone https://github.com/Lurgypai/MyVimPlugins.git
 WORKDIR /root/MyVimPlugins
 RUN ./install_dependencies.sh
 RUN ./install.sh --force-sudo
+
+#install nettle
+# RUN wget https://ftp.gnu.org/gnu/nettle/nettle-3.10.tar.gz
+
 
 WORKDIR /workspace

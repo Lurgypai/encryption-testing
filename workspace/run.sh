@@ -12,7 +12,8 @@ fi
 
 out/test $mode $count
 
-popd >> /dev/null
-
 rm plainfile.txt
 rm cipherfile
+
+popd >> /dev/null
+

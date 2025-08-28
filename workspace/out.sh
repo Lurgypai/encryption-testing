@@ -2,9 +2,9 @@
 
 rm -r out
 mkdir out
-pushd out
+pushd out >> /dev/null
 
 CC=gcc-14 CXX=g++-14 cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=On
 mv compile_commands.json ..
 
-popd
+popd >> /dev/null
