@@ -1,16 +1,27 @@
 #pragma once
-#include "EncryptionLibrary.h"
-#include "gcrypt.h"
 
-class ELgcrypt : public EncryptionLibrary {
+#include <cstdint>
+
+#include <vector>
+
+#include "EncryptionLibrary.h"
+#include "nettle/aes.h"
+#include "nettle/chacha.h"
+
+class ELnettle : public EncryptionLibrary {
 public:
-    ELgcrypt();
     size_t prepare(Algorithm alg) override;
     void setKey(void* data, size_t keyLen) override;
     void encrypt(void* source, size_t sourceSize, void* dest, size_t destSize) override;
     void decrypt(void* source, size_t sourceSize, void* dest, size_t destSize) override;
     void reset() override;
 private:
-    gcry_cipher_hd_t handle;
-    std::string iv;
+    Algorithm alg;
+    aes256_ctx aes256ctx;
+    chacha_ctx chachactx;
+    // shouldn't store probably, fine for testing
+    std::vector<std::uint8_t> key;
+
+    // nonce for chacha
+    std::vector<std::uint8_t> nonce;
 };

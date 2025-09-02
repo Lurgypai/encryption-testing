@@ -10,55 +10,53 @@ static void check_gcry(gcry_error_t err) {
 }
 
 ELgcrypt::ELgcrypt() :
-    blkLen{},
     iv{}
 {
     gcry_check_version(NULL);
-    gcry_control( GCRYCTL_DISABLE_SECMEM_WARN );
-    gcry_control( GCRYCTL_INIT_SECMEM, 16384, 0 );
+    // gcry_control( GCRYCTL_DISABLE_SECMEM_WARN );
+    // gcry_control( GCRYCTL_INIT_SECMEM, 16384, 0 );
 }
 
 size_t ELgcrypt::prepare(Algorithm alg) {
     int cipher;
     int mode;
+    size_t blkLen;
     size_t ivSize;
-    size_t keySize;
 
     switch(alg) {
     case EncryptionLibrary::Algorithm::aes256:
         cipher = GCRY_CIPHER_AES256;
         mode = GCRY_CIPHER_MODE_CBC;
-        keySize = gcry_cipher_get_algo_keylen(cipher);
-        ivSize = keySize;
+        blkLen = gcry_cipher_get_algo_blklen(cipher);
+        ivSize = blkLen;
         break;
     case EncryptionLibrary::Algorithm::chacha20:
         cipher = GCRY_CIPHER_CHACHA20;
         mode = GCRY_CIPHER_MODE_STREAM;
-        keySize = gcry_cipher_get_algo_keylen(cipher);
+        blkLen = gcry_cipher_get_algo_blklen(cipher);
         ivSize = 12;
         break;
     case EncryptionLibrary::Algorithm::camellia256:
         cipher = GCRY_CIPHER_CAMELLIA256;
         mode = GCRY_CIPHER_MODE_CBC;
-        keySize = gcry_cipher_get_algo_keylen(cipher);
-        ivSize = keySize;
+        blkLen = gcry_cipher_get_algo_blklen(cipher);
+        ivSize = blkLen;
         break;
     case EncryptionLibrary::Algorithm::twofish:
         cipher = GCRY_CIPHER_TWOFISH;
         mode = GCRY_CIPHER_MODE_CBC;
-        keySize = gcry_cipher_get_algo_keylen(cipher);
-        ivSize = keySize;
+        blkLen = gcry_cipher_get_algo_blklen(cipher);
+        ivSize = blkLen;
         break;
     default:
         break;
     }
 
-    blkLen = gcry_cipher_get_algo_blklen(cipher);
     iv.resize(ivSize);
     check_gcry(gcry_cipher_open(&handle, cipher, mode, 0));
     check_gcry(gcry_cipher_setiv(handle, iv.data(), iv.size()));
 
-    return keySize;
+    return gcry_cipher_get_algo_keylen(cipher);
 }
 
 void ELgcrypt::setKey(void* data, size_t keyLen) {

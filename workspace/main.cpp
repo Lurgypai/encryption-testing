@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "ELgcrypt.h"
+#include "ELnettle.h"
 
 static std::string generateBuffer(size_t intCount) {
     std::mt19937_64 engine{std::random_device{}()};
@@ -46,6 +47,7 @@ int main(int argc, char** argv) {
     if(argc != 4) {
         std::println("Error, incorrect arg count");
         std::println("Usage: {} <lib> <algo> <size>", argv[0]);
+        return 1;
     }
 
     // read args
@@ -57,12 +59,14 @@ int main(int argc, char** argv) {
     // prep space for readingwriting
     std::string plainText;
     plainText.resize(CHUNK_SIZE);
+    plainText = generateBuffer(CHUNK_SIZE / sizeof(std::uint64_t));
     std::string cipherText;
     cipherText.resize(CHUNK_SIZE);
     std::string decryptText;
     decryptText.resize(CHUNK_SIZE);
     std::fstream cipherFile{"cipherfile", std::ios::in | std::ios::out | std::ios::trunc | std::ios::binary};
     std::fstream plainFile{"plainfile.txt", std::ios::in | std::ios::out | std::ios::trunc | std::ios::binary};
+
     if(!cipherFile.good() || !plainFile.good()) {
         std::println("Error, one or more files aren't good.");
         return 1;
@@ -72,6 +76,12 @@ int main(int argc, char** argv) {
     std::unique_ptr<EncryptionLibrary> el{};
     if(lib == "gcrypt") {
         el = std::make_unique<ELgcrypt>();
+    } else if (lib == "nettle") {
+        el = std::make_unique<ELnettle>();
+    }
+    else {
+        std::println("Invalid lib");
+        return 1;
     }
 
 
@@ -84,22 +94,26 @@ int main(int argc, char** argv) {
         keySize = el->prepare(EncryptionLibrary::Algorithm::chacha20);
     }
     else if (algo == "aes256") {
-        keySize = el->prepare(EncryptionLibrary::Algorithm::camellia256);
+        keySize = el->prepare(EncryptionLibrary::Algorithm::aes256);
     }
     else if (algo == "twofish") {
         keySize = el->prepare(EncryptionLibrary::Algorithm::twofish);
+    }
+    else {
+        std::println("Invalid alg");
+        return 1;
     }
 
     //keygen
     std::string key = EncryptionLibrary::MakeKey(keySize);
     el->setKey(key.data(), key.size());
 
+    el->reset();
 
     //encrypt
     Timer t{};
-    double elapsed;
+    double elapsed = 0;
     for(; remaining >= CHUNK_SIZE; remaining -= CHUNK_SIZE) {
-        plainText = generateBuffer(CHUNK_SIZE / sizeof(std::uint64_t));
         plainFile.write(plainText.data(), CHUNK_SIZE);
 
         t.reset();
@@ -112,6 +126,7 @@ int main(int argc, char** argv) {
 
     // reset for decrypting
     el->reset();
+
     elapsed = 0;
     remaining = intCount * sizeof(std::uint64_t);
     plainFile.seekg(0);

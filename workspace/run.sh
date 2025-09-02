@@ -7,10 +7,11 @@ if [[ ! -f $1 ]]; then
     exit 1
 fi
    
+cat $1
 
 . $1
 
-out/test $mode $count
+out/encryption-benchmark $lib $mode $count
 
 rm plainfile.txt
 rm cipherfile
